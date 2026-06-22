@@ -90,15 +90,21 @@ class DockerBackend:
         client = self._get_client()
 
         # Run container in detached mode with a long-running command.
-        # entrypoint="" clears any ENTRYPOINT baked into the image (benchmark
-        # dataset images set /usr/local/bin/runner.sh as their entrypoint,
-        # which would otherwise consume "sleep infinity" as an argument and
-        # exit immediately, matching the handling in the Modal and GCP
-        # backends).
+        # Override the ENTRYPOINT baked into the image (benchmark dataset
+        # images set /usr/local/bin/runner.sh as their entrypoint, which would
+        # otherwise consume "sleep infinity" as an argument and exit
+        # immediately, matching the handling in the Modal and GCP backends).
+        #
+        # We fold "sleep infinity" into the entrypoint itself rather than
+        # clearing entrypoint="" and passing command="sleep infinity": the
+        # podman docker-compat API ignores an empty-string entrypoint and keeps
+        # the image's runner.sh, so the container exits immediately and later
+        # exec calls fail with a 409 ("container is not running"). Supplying a
+        # concrete entrypoint overrides the baked-in one on both Docker and
+        # podman.
         container = client.containers.run(
             image=image,
-            entrypoint="",
-            command="sleep infinity",
+            entrypoint=["sleep", "infinity"],
             detach=True,
             working_dir=workdir,
             remove=False,
